@@ -10,10 +10,11 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx.temp.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./certbot/conf:/etc/letsencrypt
       - ./certbot/www:/var/www/certbot
       - ./.htpasswd:/etc/nginx/.htpasswd:ro
+    command: ["nginx", "-g", "daemon off;"]
     environment:
       - BACKEND_HOST=${BACKEND_HOST:-nirvana_backend}
       - BACKEND_PORT=${BACKEND_PORT:-8000}
