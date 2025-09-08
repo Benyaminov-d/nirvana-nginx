@@ -67,7 +67,7 @@ services:
           -keyout /etc/letsencrypt/live/${DOMAIN}/privkey.pem \
           -out /etc/letsencrypt/live/${DOMAIN}/fullchain.pem \
           -subj "/CN=${DOMAIN}" \
-          -addext "subjectAltName=DNS:${DOMAIN},DNS:www.${DOMAIN}"; \
+          -addext "subjectAltName=DNS:${DOMAIN},DNS:www.${DOMAIN},DNS:app.${DOMAIN},DNS:admin.${DOMAIN}"; \
       fi
     env_file:
       - .env
@@ -110,6 +110,8 @@ services:
       "--webroot", "-w", "/var/www/certbot",
       "-d", "${DOMAIN}",
       "-d", "www.${DOMAIN}",
+      "-d", "app.${DOMAIN}",
+      "-d", "admin.${DOMAIN}",
       "--agree-tos", "-m", "${CERTBOT_EMAIL}",
       "--keep-until-expiring",
       "--non-interactive"
