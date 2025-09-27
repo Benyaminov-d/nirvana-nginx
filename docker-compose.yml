@@ -1,0 +1,137 @@
+services:
+
+  # Nginx Production (with SSL)
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: nirvana_nginx
+    depends_on:
+      - cert-init
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+      - ./.htpasswd:/etc/nginx/.htpasswd:ro
+    command: ["nginx", "-g", "daemon off;"]
+    environment:
+      - BACKEND_HOST=${BACKEND_HOST:-nirvana_backend}
+      - BACKEND_PORT=${BACKEND_PORT:-8000}
+      - FRONTEND_HOST=${FRONTEND_HOST:-nirvana_website}  
+      - FRONTEND_PORT=${FRONTEND_PORT:-80}
+      - NIRVANA_MODE=${NIRVANA_MODE:-production}
+    env_file:
+      - .env
+    profiles:
+      - production
+    networks:
+      - nirvana_network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Nginx Local Development (no SSL)
+  nginx-local:
+    image: nginx:1.25-alpine
+    container_name: nirvana_nginx_local
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.local.conf:/etc/nginx/nginx.conf:ro
+      - ./.htpasswd:/etc/nginx/.htpasswd:ro
+    environment:
+      - BACKEND_HOST=${BACKEND_HOST:-nirvana_backend}
+      - BACKEND_PORT=${BACKEND_PORT:-8000}
+      - FRONTEND_HOST=${FRONTEND_HOST:-nirvana_website_dev}
+      - FRONTEND_PORT=${FRONTEND_PORT:-5173}
+      - NIRVANA_MODE=${NIRVANA_MODE:-development}
+    env_file:
+      - .env
+    profiles:
+      - development
+    networks:
+      - nirvana_network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # SSL Certificate Initialization
+  cert-init:
+    image: alpine:3.19
+    container_name: nirvana_cert_init
+    entrypoint: ["/bin/sh","-c"]
+    command: >
+      mkdir -p /etc/letsencrypt/live/${DOMAIN} && \
+      if [ ! -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem ]; then \
+        apk add --no-cache openssl >/dev/null 2>&1 && \
+        openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+          -keyout /etc/letsencrypt/live/${DOMAIN}/privkey.pem \
+          -out /etc/letsencrypt/live/${DOMAIN}/fullchain.pem \
+          -subj "/CN=${DOMAIN}" \
+          -addext "subjectAltName=DNS:${DOMAIN},DNS:www.${DOMAIN},DNS:app.${DOMAIN},DNS:admin.${DOMAIN}"; \
+      fi
+    env_file:
+      - .env
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+    profiles:
+      - production
+    networks:
+      - nirvana_network
+
+  # Certbot for SSL Certificate Renewal
+  certbot:
+    image: certbot/certbot:latest
+    container_name: nirvana_certbot
+    entrypoint: ["/bin/sh","-c"]
+    command: >
+      trap exit TERM; \
+      while :; do \
+        certbot renew --webroot -w /var/www/certbot --quiet || true; \
+        sleep 12h & wait $${!}; \
+      done
+    env_file:
+      - .env
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    profiles:
+      - production
+    networks:
+      - nirvana_network
+
+  # One-off SSL Certificate Issuance
+  cert-issue:
+    image: certbot/certbot:latest
+    container_name: nirvana_cert_issue
+    entrypoint: ["certbot"]
+    command: [
+      "certonly",
+      "--expand",
+      "--webroot", "-w", "/var/www/certbot",
+      "-d", "${DOMAIN}",
+      "-d", "www.${DOMAIN}",
+      "-d", "app.${DOMAIN}",
+      "-d", "admin.${DOMAIN}",
+      "--agree-tos", "-m", "${CERTBOT_EMAIL}",
+      "--keep-until-expiring",
+      "--non-interactive"
+    ]
+    env_file:
+      - .env
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    profiles:
+      - production
+    networks:
+      - nirvana_network
+
+volumes:
+  certbot_conf:
+  certbot_www:
+
+networks:
+  nirvana_network:
+    name: nirvana_network
+    driver: bridge
+    external: true
